@@ -244,4 +244,14 @@ var _ = Describe("CloudDrive", func() {
 		})
 	})
 
+	Describe("Quota", func() {
+		It("should get account quota", func() {
+			quota, err := client.Quota()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(quota.Quota).To(BeNumerically(">", 0))
+			Expect(quota.Available).To(BeNumerically(">=", 0))
+		})
+	})
+
 })

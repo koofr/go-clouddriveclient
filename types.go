@@ -54,3 +54,9 @@ type NodeMove struct {
 	FromParent string `json:"fromParent"`
 	ChildId    string `json:"childId"`
 }
+
+type Quota struct {
+	Quota          int64     `json:"quota"`
+	LastCalculated time.Time `json:"lastCalculated"`
+	Available      int64     `json:"available"`
+}

@@ -422,3 +422,23 @@ func (d *CloudDrive) OverwriteNode(nodeId string, reader io.Reader) (ok bool, no
 
 	return true, node, nil
 }
+
+func (d *CloudDrive) Quota() (quota *Quota, err error) {
+	quota = &Quota{}
+
+	req := &httpclient.RequestData{
+		Method:         "GET",
+		Path:           "/account/quota",
+		ExpectedStatus: []int{http.StatusOK},
+		RespEncoding:   httpclient.EncodingJSON,
+		RespValue:      &quota,
+	}
+
+	_, err = d.Request(d.MetadataClient, req)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return quota, nil
+}
