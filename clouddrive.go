@@ -15,17 +15,19 @@ import (
 	"github.com/koofr/go-ioutils"
 )
 
-const MaxRetries = 5
+const DefaultMaxRetries = 5
 
 type CloudDrive struct {
 	ContentClient  *httpclient.HTTPClient
 	MetadataClient *httpclient.HTTPClient
 	Auth           *CloudDriveAuth
+	MaxRetries     int
 }
 
 func NewCloudDrive(auth *CloudDriveAuth) (d *CloudDrive, err error) {
 	d = &CloudDrive{
-		Auth: auth,
+		Auth:       auth,
+		MaxRetries: DefaultMaxRetries,
 	}
 
 	endpointUrl, _ := url.Parse("https://drive.amazonaws.com/drive/v1")
@@ -66,7 +68,7 @@ func NewCloudDrive(auth *CloudDriveAuth) (d *CloudDrive, err error) {
 }
 
 func (d *CloudDrive) Request(client *httpclient.HTTPClient, request *httpclient.RequestData) (response *http.Response, err error) {
-	retries := MaxRetries
+	retries := d.MaxRetries
 
 	canRetry := request.CanCopy()
 
