@@ -90,6 +90,29 @@ var _ = Describe("CloudDrive", func() {
 		})
 	})
 
+	Describe("Changes", func() {
+		It("should get all changes", func() {
+			createFolder()
+
+			changes, err := client.Changes("")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(changes.Nodes) > 0).To(BeTrue())
+			Expect(changes.Reset).To(BeTrue())
+
+			changes, err = client.Changes(changes.Checkpoint)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(changes.Nodes) == 0).To(BeTrue())
+			Expect(changes.Reset).To(BeFalse())
+
+			createFolder()
+
+			changes, err = client.Changes(changes.Checkpoint)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(changes.Nodes) > 0).To(BeTrue())
+			Expect(changes.Reset).To(BeFalse())
+		})
+	})
+
 	Describe("CreateFolder", func() {
 		It("should create folder with parent id and name", func() {
 			name := fmt.Sprintf("%d", rand.Int())

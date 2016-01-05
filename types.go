@@ -16,13 +16,26 @@ type RefreshResp struct {
 	AccessToken string `json:"access_token"`
 }
 
-const NodeKindFile = "FILE"
-const NodeKindFolder = "FOLDER"
+const (
+	NodeKindAsset  = "ASSET"
+	NodeKindFile   = "FILE"
+	NodeKindFolder = "FOLDER"
+	NodeKindGroup  = "GROUP"
+)
+
+const (
+	NodeStatusAvailable = "AVAILABLE"
+	NodeStatusPending   = "PENDING"
+	NodeStatusTrash     = "TRASH"
+	NodeStatusPurged    = "PURGED"
+)
 
 type Node struct {
 	Id                string                `json:"id"`
 	Name              string                `json:"name"`
 	Kind              string                `json:"kind"`
+	Parents           []string              `json:"parents"`
+	Status            string                `json:"status"`
 	ModifiedDate      time.Time             `json:"modifiedDate"`
 	ContentProperties NodeContentProperties `json:"contentProperties"`
 	Reader            io.ReadCloser
@@ -59,4 +72,10 @@ type Quota struct {
 	Quota          int64     `json:"quota"`
 	LastCalculated time.Time `json:"lastCalculated"`
 	Available      int64     `json:"available"`
+}
+
+type Changes struct {
+	Checkpoint string  `json:"checkpoint"`
+	Nodes      []*Node `json:"nodes"`
+	Reset      bool    `json:"reset"`
 }

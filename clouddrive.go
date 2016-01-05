@@ -1,6 +1,7 @@
 package clouddriveclient
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -225,6 +226,61 @@ func (d *CloudDrive) NodeChildren(parentId string) (ok bool, nodes []*Node, err 
 	}
 
 	return true, nodes, nil
+}
+
+func (d *CloudDrive) Changes(checkpoint string) (changes *Changes, err error) {
+	req := &httpclient.RequestData{
+		Method:         "POST",
+		Path:           "/changes",
+		ExpectedStatus: []int{http.StatusOK},
+	}
+
+	if checkpoint != "" {
+		req.ReqEncoding = httpclient.EncodingJSON
+
+		req.ReqValue = struct {
+			Checkpoint string `json:"checkpoint"`
+		}{
+			Checkpoint: checkpoint,
+		}
+	}
+
+	res, err := d.Request(d.MetadataClient, req)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if res == nil {
+		fmt.Println(req)
+		fmt.Println(res)
+		fmt.Println(err)
+		panic("WTF")
+	}
+
+	var r io.ReadCloser = res.Body
+
+	if res.Header.Get("Content-Encoding") == "gzip" {
+		r, err = gzip.NewReader(r)
+
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	decoder := json.NewDecoder(r)
+
+	changes = &Changes{}
+
+	err = decoder.Decode(changes)
+
+	if err != nil {
+		return nil, err
+	}
+
+	res.Body.Close()
+
+	return changes, nil
 }
 
 func (d *CloudDrive) CreateFolder(parentId string, name string) (ok bool, node *Node, err error) {
