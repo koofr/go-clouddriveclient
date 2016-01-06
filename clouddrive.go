@@ -49,7 +49,7 @@ func NewCloudDrive(auth *CloudDriveAuth) (d *CloudDrive, err error) {
 	_, err = d.Request(endpointClient, endpointReq)
 
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	if !endpoint.CustomerExists {
@@ -65,7 +65,7 @@ func NewCloudDrive(auth *CloudDriveAuth) (d *CloudDrive, err error) {
 	d.MetadataClient = httpclient.New()
 	d.MetadataClient.BaseURL = metadataUrl
 
-	return
+	return d, nil
 }
 
 func (d *CloudDrive) Request(client *httpclient.HTTPClient, request *httpclient.RequestData) (response *http.Response, err error) {
@@ -141,7 +141,7 @@ func (d *CloudDrive) LookupRoot() (root *Node, err error) {
 	_, err = d.Request(d.MetadataClient, req)
 
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	if len(nodes.Nodes) == 0 {
@@ -150,10 +150,10 @@ func (d *CloudDrive) LookupRoot() (root *Node, err error) {
 
 	root = nodes.Nodes[0]
 
-	return
+	return root, nil
 }
 
-func (d *CloudDrive) LookupNode(parentId string, name string) (ok bool, node *Node, err error) {
+func (d *CloudDrive) LookupNode(parentId string, name string) (node *Node, ok bool, err error) {
 	nameEscaped := strings.Replace(name, "\"", "\\\\", -1)
 
 	params := make(url.Values)
@@ -173,17 +173,17 @@ func (d *CloudDrive) LookupNode(parentId string, name string) (ok bool, node *No
 	_, err = d.Request(d.MetadataClient, req)
 
 	if err != nil {
-		return false, nil, err
+		return nil, false, err
 	}
 
 	if len(nodes.Nodes) == 0 {
-		return false, nil, nil
+		return nil, false, nil
 	}
 
-	return true, nodes.Nodes[0], nil
+	return nodes.Nodes[0], true, nil
 }
 
-func (d *CloudDrive) NodeChildren(parentId string) (ok bool, nodes []*Node, err error) {
+func (d *CloudDrive) NodeChildren(parentId string) (nodes []*Node, err error) {
 	nextToken := ""
 
 	nodes = []*Node{}
@@ -209,7 +209,7 @@ func (d *CloudDrive) NodeChildren(parentId string) (ok bool, nodes []*Node, err 
 		_, err = d.Request(d.MetadataClient, req)
 
 		if err != nil {
-			return false, nil, err
+			return nil, err
 		}
 
 		if len(ns.Nodes) == 0 {
@@ -225,7 +225,7 @@ func (d *CloudDrive) NodeChildren(parentId string) (ok bool, nodes []*Node, err 
 		nextToken = ns.NextToken
 	}
 
-	return true, nodes, nil
+	return nodes, nil
 }
 
 func (d *CloudDrive) Changes(checkpoint string) (changes *Changes, err error) {
@@ -283,7 +283,7 @@ func (d *CloudDrive) Changes(checkpoint string) (changes *Changes, err error) {
 	return changes, nil
 }
 
-func (d *CloudDrive) CreateFolder(parentId string, name string) (ok bool, node *Node, err error) {
+func (d *CloudDrive) CreateFolder(parentId string, name string) (node *Node, err error) {
 	create := &NodeCreate{
 		Name:    name,
 		Kind:    NodeKindFolder,
@@ -305,13 +305,13 @@ func (d *CloudDrive) CreateFolder(parentId string, name string) (ok bool, node *
 	_, err = d.Request(d.MetadataClient, req)
 
 	if err != nil {
-		return false, nil, err
+		return nil, err
 	}
 
-	return true, node, nil
+	return node, nil
 }
 
-func (d *CloudDrive) DeleteNode(nodeId string) (ok bool, node *Node, err error) {
+func (d *CloudDrive) DeleteNode(nodeId string) (node *Node, err error) {
 	node = &Node{}
 
 	req := &httpclient.RequestData{
@@ -325,13 +325,13 @@ func (d *CloudDrive) DeleteNode(nodeId string) (ok bool, node *Node, err error) 
 	_, err = d.Request(d.MetadataClient, req)
 
 	if err != nil {
-		return false, nil, err
+		return nil, err
 	}
 
-	return true, node, nil
+	return node, nil
 }
 
-func (d *CloudDrive) RenameNode(nodeId string, newName string) (ok bool, node *Node, err error) {
+func (d *CloudDrive) RenameNode(nodeId string, newName string) (node *Node, err error) {
 	rename := &NodeRename{
 		Name: newName,
 	}
@@ -351,13 +351,13 @@ func (d *CloudDrive) RenameNode(nodeId string, newName string) (ok bool, node *N
 	_, err = d.Request(d.MetadataClient, req)
 
 	if err != nil {
-		return false, nil, err
+		return nil, err
 	}
 
-	return true, node, nil
+	return node, nil
 }
 
-func (d *CloudDrive) MoveNode(nodeId string, fromParentId string, toParentId string) (ok bool, node *Node, err error) {
+func (d *CloudDrive) MoveNode(nodeId string, fromParentId string, toParentId string) (node *Node, err error) {
 	move := &NodeMove{
 		FromParent: fromParentId,
 		ChildId:    nodeId,
@@ -378,10 +378,10 @@ func (d *CloudDrive) MoveNode(nodeId string, fromParentId string, toParentId str
 	_, err = d.Request(d.MetadataClient, req)
 
 	if err != nil {
-		return false, nil, err
+		return nil, err
 	}
 
-	return true, node, nil
+	return node, nil
 }
 
 func (d *CloudDrive) DownloadNode(nodeId string, span *ioutils.FileSpan) (reader io.ReadCloser, size int64, err error) {
@@ -409,7 +409,7 @@ func (d *CloudDrive) DownloadNode(nodeId string, span *ioutils.FileSpan) (reader
 	return res.Body, res.ContentLength, nil
 }
 
-func (d *CloudDrive) UploadNode(parentId string, name string, reader io.Reader) (ok bool, node *Node, err error) {
+func (d *CloudDrive) UploadNode(parentId string, name string, reader io.Reader) (node *Node, err error) {
 	create := &NodeCreate{
 		Name:    name,
 		Kind:    NodeKindFile,
@@ -419,7 +419,7 @@ func (d *CloudDrive) UploadNode(parentId string, name string, reader io.Reader) 
 	createJson, err := json.Marshal(create)
 
 	if err != nil {
-		return false, nil, err
+		return nil, err
 	}
 
 	params := make(url.Values)
@@ -443,19 +443,19 @@ func (d *CloudDrive) UploadNode(parentId string, name string, reader io.Reader) 
 	err = req.UploadFileExtra("file", "file", reader, extra)
 
 	if err != nil {
-		return false, nil, err
+		return nil, err
 	}
 
 	_, err = d.Request(d.ContentClient, req)
 
 	if err != nil {
-		return false, nil, err
+		return nil, err
 	}
 
-	return true, node, nil
+	return node, nil
 }
 
-func (d *CloudDrive) OverwriteNode(nodeId string, reader io.Reader) (ok bool, node *Node, err error) {
+func (d *CloudDrive) OverwriteNode(nodeId string, reader io.Reader) (node *Node, err error) {
 	node = &Node{}
 
 	req := &httpclient.RequestData{
@@ -469,16 +469,16 @@ func (d *CloudDrive) OverwriteNode(nodeId string, reader io.Reader) (ok bool, no
 	err = req.UploadFile("file", "file", reader)
 
 	if err != nil {
-		return false, nil, err
+		return nil, err
 	}
 
 	_, err = d.Request(d.ContentClient, req)
 
 	if err != nil {
-		return false, nil, err
+		return nil, err
 	}
 
-	return true, node, nil
+	return node, nil
 }
 
 func (d *CloudDrive) Quota() (quota *Quota, err error) {
