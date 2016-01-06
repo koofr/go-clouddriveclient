@@ -251,13 +251,6 @@ func (d *CloudDrive) Changes(checkpoint string) (changes *Changes, err error) {
 		return nil, err
 	}
 
-	if res == nil {
-		fmt.Println(req)
-		fmt.Println(res)
-		fmt.Println(err)
-		panic("WTF")
-	}
-
 	var r io.ReadCloser = res.Body
 
 	if res.Header.Get("Content-Encoding") == "gzip" {
