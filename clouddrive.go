@@ -120,7 +120,7 @@ func (d *CloudDrive) Request(client *httpclient.HTTPClient, request *httpclient.
 		return response, err
 	}
 
-	return nil, err
+	return nil, fmt.Errorf("Too many retries")
 }
 
 func (d *CloudDrive) LookupRoot() (root *Node, err error) {
