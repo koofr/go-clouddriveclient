@@ -11,11 +11,6 @@ type Endpoint struct {
 	MetadataUrl    string `json:"metadataUrl"`
 }
 
-type RefreshResp struct {
-	ExpiresIn   int64  `json:"expires_in"`
-	AccessToken string `json:"access_token"`
-}
-
 const (
 	NodeKindAsset  = "ASSET"
 	NodeKindFile   = "FILE"

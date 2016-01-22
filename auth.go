@@ -2,12 +2,25 @@ package clouddriveclient
 
 import (
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
+	"github.com/koofr/go-httpclient"
 	"net/http"
 	"net/url"
 	"time"
 )
+
+const (
+	InvalidGrantError = "invalid_grant"
+)
+
+type RefreshResp struct {
+	ExpiresIn   int64  `json:"expires_in"`
+	AccessToken string `json:"access_token"`
+}
+
+type RefreshRespError struct {
+	Error            string `json:"error"`
+	ErrorDescription string `json:"error_description"`
+}
 
 type CloudDriveAuth struct {
 	ClientId     string
@@ -18,44 +31,46 @@ type CloudDriveAuth struct {
 	ExpiresAt    time.Time
 }
 
-func (d *CloudDriveAuth) ValidToken() (token string, err error) {
-	if time.Now().Unix() > (d.ExpiresAt.Unix() - 5*60) {
+func (a *CloudDriveAuth) ValidToken() (token string, err error) {
+	if time.Now().Unix() > (a.ExpiresAt.Unix() - 5*60) {
 		data := url.Values{}
 		data.Set("grant_type", "refresh_token")
-		data.Set("client_id", d.ClientId)
-		data.Set("client_secret", d.ClientSecret)
-		data.Set("redirect_uri", d.RedirectUri)
-		data.Set("refresh_token", d.RefreshToken)
-
-		var resp *http.Response
-
-		resp, err = http.PostForm("https://api.amazon.com/auth/o2/token", data)
-		if err != nil {
-			return
-		}
-
-		defer resp.Body.Close()
-
-		var buf []byte
-		if buf, err = ioutil.ReadAll(resp.Body); err != nil {
-			return
-		}
-
-		if resp.StatusCode != 200 {
-			err = fmt.Errorf("Token refresh failed %d: %s", resp.StatusCode, resp.Status)
-			return
-		}
+		data.Set("client_id", a.ClientId)
+		data.Set("client_secret", a.ClientSecret)
+		data.Set("redirect_uri", a.RedirectUri)
+		data.Set("refresh_token", a.RefreshToken)
 
 		var respVal RefreshResp
-		if err = json.Unmarshal(buf, &respVal); err != nil {
-			return
+
+		_, err = httpclient.DefaultClient.Request(&httpclient.RequestData{
+			Method:         "POST",
+			FullURL:        "https://api.amazon.com/auth/o2/token",
+			ExpectedStatus: []int{http.StatusOK},
+			ReqEncoding:    httpclient.EncodingForm,
+			ReqValue:       data,
+			RespEncoding:   httpclient.EncodingJSON,
+			RespValue:      &respVal,
+		})
+
+		if err != nil {
+			err = HandleError(err)
+
+			if cde, ok := IsCloudDriveError(err); ok {
+				refreshErr := &RefreshRespError{}
+				if jsonErr := json.Unmarshal([]byte(cde.Message), &refreshErr); jsonErr == nil {
+					cde.Code = refreshErr.Error
+					cde.Message = refreshErr.ErrorDescription
+				}
+			}
+
+			return "", err
 		}
 
-		d.AccessToken = respVal.AccessToken
-		d.ExpiresAt = time.Now().Add(time.Duration(respVal.ExpiresIn) * time.Second)
+		a.AccessToken = respVal.AccessToken
+		a.ExpiresAt = time.Now().Add(time.Duration(respVal.ExpiresIn) * time.Second)
 	}
 
-	token = d.AccessToken
+	token = a.AccessToken
 
-	return
+	return token, nil
 }

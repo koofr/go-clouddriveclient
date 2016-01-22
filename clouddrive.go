@@ -68,6 +68,10 @@ func NewCloudDrive(auth *CloudDriveAuth) (d *CloudDrive, err error) {
 	return d, nil
 }
 
+func (d *CloudDrive) HandleError(err error) error {
+	return HandleError(err)
+}
+
 func (d *CloudDrive) Request(client *httpclient.HTTPClient, request *httpclient.RequestData) (response *http.Response, err error) {
 	retries := d.MaxRetries
 
@@ -105,8 +109,6 @@ func (d *CloudDrive) Request(client *httpclient.HTTPClient, request *httpclient.
 			if httpErr, ok := err.(httpclient.InvalidStatusError); ok {
 				doRetry = httpErr.Got == 429
 			}
-		} else if response.StatusCode == 429 {
-			doRetry = true
 		}
 
 		if doRetry {
@@ -117,7 +119,7 @@ func (d *CloudDrive) Request(client *httpclient.HTTPClient, request *httpclient.
 			continue
 		}
 
-		return response, err
+		return response, d.HandleError(err)
 	}
 
 	return nil, fmt.Errorf("Too many retries")
