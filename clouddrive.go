@@ -192,7 +192,6 @@ func (d *CloudDrive) NodeChildren(parentId string) (nodes []*Node, err error) {
 
 	for {
 		params := make(url.Values)
-		params.Set("filters", "parents:"+parentId)
 		if nextToken != "" {
 			params.Set("startToken", nextToken)
 		}
@@ -201,7 +200,7 @@ func (d *CloudDrive) NodeChildren(parentId string) (nodes []*Node, err error) {
 
 		req := &httpclient.RequestData{
 			Method:         "GET",
-			Path:           "/nodes",
+			Path:           "/nodes/" + parentId + "/children",
 			Params:         params,
 			ExpectedStatus: []int{http.StatusOK},
 			RespEncoding:   httpclient.EncodingJSON,
