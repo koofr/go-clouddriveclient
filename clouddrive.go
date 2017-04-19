@@ -390,10 +390,6 @@ func (d *CloudDrive) DownloadNode(nodeId string, span *ioutils.FileSpan) (reader
 		req.Headers.Set("Range", fmt.Sprintf("bytes=%d-%d", span.Start, span.End))
 	}
 
-	if err != nil {
-		return nil, 0, err
-	}
-
 	res, err := d.Request(d.ContentClient, req)
 
 	if err != nil {
