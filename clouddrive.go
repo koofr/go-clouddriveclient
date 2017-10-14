@@ -28,6 +28,7 @@ type CloudDrive struct {
 func NewCloudDrive(auth *CloudDriveAuth, httpClient *http.Client) (d *CloudDrive, err error) {
 	authHTTPClient := httpclient.New()
 	authHTTPClient.Client = httpClient
+	auth.HTTPClient = authHTTPClient
 
 	d = &CloudDrive{
 		Auth:       auth,

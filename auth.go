@@ -32,7 +32,7 @@ type CloudDriveAuth struct {
 	RefreshToken   string
 	ExpiresAt      time.Time
 	OnTokenRefresh func()
-	HTTPClient     httpclient.HTTPClient
+	HTTPClient     *httpclient.HTTPClient
 
 	mutex sync.Mutex
 }
