@@ -25,7 +25,10 @@ type CloudDrive struct {
 	MaxRetries     int
 }
 
-func NewCloudDrive(auth *CloudDriveAuth) (d *CloudDrive, err error) {
+func NewCloudDrive(auth *CloudDriveAuth, httpClient *http.Client) (d *CloudDrive, err error) {
+	authHTTPClient := httpclient.New()
+	authHTTPClient.Client = httpClient
+
 	d = &CloudDrive{
 		Auth:       auth,
 		MaxRetries: DefaultMaxRetries,
@@ -34,6 +37,7 @@ func NewCloudDrive(auth *CloudDriveAuth) (d *CloudDrive, err error) {
 	endpointUrl, _ := url.Parse("https://drive.amazonaws.com/drive/v1")
 
 	endpointClient := httpclient.New()
+	endpointClient.Client = httpClient
 	endpointClient.BaseURL = endpointUrl
 
 	endpoint := &Endpoint{}
@@ -60,9 +64,11 @@ func NewCloudDrive(auth *CloudDriveAuth) (d *CloudDrive, err error) {
 	metadataUrl, _ := url.Parse(endpoint.MetadataUrl)
 
 	d.ContentClient = httpclient.New()
+	d.ContentClient.Client = httpClient
 	d.ContentClient.BaseURL = contentUrl
 
 	d.MetadataClient = httpclient.New()
+	d.MetadataClient.Client = httpClient
 	d.MetadataClient.BaseURL = metadataUrl
 
 	return d, nil

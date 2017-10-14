@@ -32,6 +32,7 @@ type CloudDriveAuth struct {
 	RefreshToken   string
 	ExpiresAt      time.Time
 	OnTokenRefresh func()
+	HTTPClient     httpclient.HTTPClient
 
 	mutex sync.Mutex
 }
@@ -62,7 +63,7 @@ func (a *CloudDriveAuth) UpdateRefreshToken() (err error) {
 
 	var respVal RefreshResp
 
-	_, err = httpclient.DefaultClient.Request(&httpclient.RequestData{
+	_, err = a.HTTPClient.Request(&httpclient.RequestData{
 		Method:         "POST",
 		FullURL:        "https://api.amazon.com/auth/o2/token",
 		ExpectedStatus: []int{http.StatusOK},

@@ -2,13 +2,15 @@ package clouddriveclient
 
 import (
 	"fmt"
-	"github.com/koofr/go-ioutils"
 	"io/ioutil"
 	"math/rand"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/koofr/go-ioutils"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -39,7 +41,7 @@ var _ = Describe("CloudDrive", func() {
 
 		rand.Seed(time.Now().UnixNano())
 
-		client, err = NewCloudDrive(auth)
+		client, err = NewCloudDrive(auth, http.DefaultClient)
 		Expect(err).NotTo(HaveOccurred())
 
 		root, err = client.LookupRoot()
