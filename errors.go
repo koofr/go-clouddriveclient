@@ -28,7 +28,8 @@ func HandleError(err error) error {
 	if ise, ok := httpclient.IsInvalidStatusError(err); ok {
 		cloudDriveErr := &CloudDriveError{}
 
-		if ise.Headers.Get("Content-Type") == "application/vnd.error+json" {
+		ct := ise.Headers.Get("Content-Type")
+		if ct == "application/vnd.error+json" || ct == "application/json" {
 			if jsonErr := json.Unmarshal([]byte(ise.Content), &cloudDriveErr); jsonErr != nil {
 				cloudDriveErr.Code = "unknown"
 				cloudDriveErr.Message = ise.Content
