@@ -192,6 +192,30 @@ func (d *CloudDrive) LookupNode(parentId string, name string) (node *Node, ok bo
 	return nodes.Nodes[0], true, nil
 }
 
+func (d *CloudDrive) LookupNodeById(nodeId string) (node *Node, err error) {
+
+	params := make(url.Values)
+	params.Set("tempLink", "true")
+
+	node = &Node{}
+
+	req := &httpclient.RequestData{
+		Method:         "GET",
+		Path:           "/nodes/" + nodeId,
+		Params:         params,
+		ExpectedStatus: []int{http.StatusOK},
+		RespEncoding:   httpclient.EncodingJSON,
+		RespValue:      &node,
+	}
+
+	_, err = d.Request(d.MetadataClient, req)
+
+	if err != nil {
+		return nil, err
+	}
+	return node, nil
+}
+
 func (d *CloudDrive) NodeChildren(parentId string) (nodes []*Node, err error) {
 	nextToken := ""
 
@@ -392,6 +416,28 @@ func (d *CloudDrive) DownloadNode(nodeId string, span *ioutils.FileSpan) (reader
 		ExpectedStatus: []int{http.StatusOK, http.StatusPartialContent},
 	}
 
+	if span != nil {
+		req.Headers = make(http.Header)
+		req.Headers.Set("Range", fmt.Sprintf("bytes=%d-%d", span.Start, span.End))
+	}
+
+	res, err := d.Request(d.ContentClient, req)
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return res.Body, res.ContentLength, nil
+}
+
+func (d *CloudDrive) DownloadNodeByTempLink(nodeId string, span *ioutils.FileSpan) (reader io.ReadCloser, size int64, err error) {
+	node, err := d.LookupNodeById(nodeId)
+
+	req := &httpclient.RequestData{
+		Method:         "GET",
+		FullURL:        node.TempLink,
+		ExpectedStatus: []int{http.StatusOK, http.StatusPartialContent},
+	}
 	if span != nil {
 		req.Headers = make(http.Header)
 		req.Headers.Set("Range", fmt.Sprintf("bytes=%d-%d", span.Start, span.End))

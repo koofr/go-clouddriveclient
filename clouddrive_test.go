@@ -196,6 +196,40 @@ var _ = Describe("CloudDrive", func() {
 
 			Expect(string(data)).To(Equal("34"))
 		})
+
+		It("should download node by temp link", func() {
+			name := fmt.Sprintf("%d", rand.Int())
+
+			node, err := client.UploadNode(root.Id, name, strings.NewReader("12345"))
+			Expect(err).NotTo(HaveOccurred())
+
+			reader, size, err := client.DownloadNodeByTempLink(node.Id, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(reader).NotTo(BeNil())
+			Expect(size).To(Equal(int64(5)))
+
+			data, _ := ioutil.ReadAll(reader)
+			reader.Close()
+
+			Expect(string(data)).To(Equal("12345"))
+		})
+
+		It("should download node range by temp link", func() {
+			name := fmt.Sprintf("%d", rand.Int())
+
+			node, err := client.UploadNode(root.Id, name, strings.NewReader("12345"))
+			Expect(err).NotTo(HaveOccurred())
+
+			reader, size, err := client.DownloadNodeByTempLink(node.Id, &ioutils.FileSpan{2, 3})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(reader).NotTo(BeNil())
+			Expect(size).To(Equal(int64(2)))
+
+			data, _ := ioutil.ReadAll(reader)
+			reader.Close()
+
+			Expect(string(data)).To(Equal("34"))
+		})
 	})
 
 	Describe("UploadNode", func() {

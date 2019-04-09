@@ -33,6 +33,7 @@ type Node struct {
 	Status            string                `json:"status"`
 	ModifiedDate      time.Time             `json:"modifiedDate"`
 	ContentProperties NodeContentProperties `json:"contentProperties"`
+	TempLink          string                `json:"tempLink"`
 	Reader            io.ReadCloser
 }
 
