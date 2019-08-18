@@ -1,10 +1,13 @@
 package clouddriveclient
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -15,6 +18,15 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
+
+type testRoundTripper struct {
+}
+
+func (t *testRoundTripper) RoundTrip(req *http.Request) (res *http.Response, err error) {
+	res, err = http.DefaultTransport.RoundTrip(req)
+	time.Sleep(300 * time.Millisecond)
+	return res, err
+}
 
 var _ = Describe("CloudDrive", func() {
 	var client *CloudDrive
@@ -41,17 +53,27 @@ var _ = Describe("CloudDrive", func() {
 
 		rand.Seed(time.Now().UnixNano())
 
-		client, err = NewCloudDrive(auth, http.DefaultClient)
+		httpClient := &http.Client{
+			// we need a custom transport that adds some delay otherwise we get random read after
+			// write errors (e.g. Info after Delete succeeds)
+			Transport: &testRoundTripper{},
+		}
+
+		client, err = NewCloudDrive(auth, httpClient)
 		Expect(err).NotTo(HaveOccurred())
 
-		root, err = client.LookupRoot()
+		endpoint, err := client.GetEndpoint(context.Background())
+		Expect(err).NotTo(HaveOccurred())
+		client.InitEndpoint(endpoint.ContentUrl, endpoint.MetadataUrl)
+
+		root, err = client.LookupRoot(context.Background())
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	var createFolder = func() *Node {
 		name := fmt.Sprintf("%d", rand.Int())
 
-		node, err := client.CreateFolder(root.Id, name)
+		node, err := client.CreateFolder(context.Background(), root.Id, name)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(node.Name).To(Equal(name))
 
@@ -60,7 +82,7 @@ var _ = Describe("CloudDrive", func() {
 
 	Describe("LookupRoot", func() {
 		It("should get root node", func() {
-			node, err := client.LookupRoot()
+			node, err := client.LookupRoot(context.Background())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(node.Name).To(Equal(""))
 		})
@@ -73,7 +95,7 @@ var _ = Describe("CloudDrive", func() {
 			for i := 0; i < 5; i++ {
 				time.Sleep(2 * time.Second)
 
-				node, ok, lookupError := client.LookupNode(root.Id, folder.Name)
+				node, ok, lookupError := client.LookupNode(context.Background(), root.Id, folder.Name)
 				if ok {
 					Expect(node.Name).To(Equal(folder.Name))
 					Expect(node.Id).To(Equal(folder.Id))
@@ -92,9 +114,18 @@ var _ = Describe("CloudDrive", func() {
 		It("should get nodes for parent id", func() {
 			createFolder()
 
-			nodes, err := client.NodeChildren(root.Id)
+			nodes, err := client.NodeChildren(context.Background(), root.Id)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(nodes) > 0).To(BeTrue())
+		})
+
+		It("should fail with node not found error", func() {
+			_, err := client.NodeChildren(context.Background(), "nonexistentid")
+			Expect(err).To(HaveOccurred())
+			cde, ok := IsCloudDriveError(err)
+			Expect(ok).To(BeTrue())
+			Expect(cde.Code).To(Equal(ErrorCodeNodeNotFound))
+			Expect(cde.Message).To(Equal("Node does not exists"))
 		})
 	})
 
@@ -102,19 +133,19 @@ var _ = Describe("CloudDrive", func() {
 		It("should get all changes", func() {
 			createFolder()
 
-			changes, err := client.Changes("")
+			changes, err := client.Changes(context.Background(), "")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(changes.Nodes) > 0).To(BeTrue())
 			Expect(changes.Reset).To(BeTrue())
 
-			changes, err = client.Changes(changes.Checkpoint)
+			changes, err = client.Changes(context.Background(), changes.Checkpoint)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(changes.Nodes) == 0).To(BeTrue())
 			Expect(changes.Reset).To(BeFalse())
 
 			createFolder()
 
-			changes, err = client.Changes(changes.Checkpoint)
+			changes, err = client.Changes(context.Background(), changes.Checkpoint)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(changes.Nodes) > 0).To(BeTrue())
 			Expect(changes.Reset).To(BeFalse())
@@ -122,54 +153,133 @@ var _ = Describe("CloudDrive", func() {
 	})
 
 	Describe("CreateFolder", func() {
-		It("should create folder with parent id and name", func() {
+		It("should create a folder with parent id and name", func() {
 			name := fmt.Sprintf("%d", rand.Int())
 
-			node, err := client.CreateFolder(root.Id, name)
+			node, err := client.CreateFolder(context.Background(), root.Id, name)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(node.Name).To(Equal(name))
+		})
+
+		It("should not create a folder with parent id and existing name", func() {
+			name := fmt.Sprintf("%d", rand.Int())
+
+			node, err := client.CreateFolder(context.Background(), root.Id, name)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(node.Name).To(Equal(name))
+
+			_, err = client.CreateFolder(context.Background(), root.Id, name)
+			cde, ok := IsCloudDriveError(err)
+			Expect(ok).To(BeTrue())
+			Expect(cde.Code).To(Equal(ErrorCodeNameAlreadyExists))
+			Expect(cde.Message).To(MatchRegexp(`^Node with the name \w+ already exists under parentId \w+ conflicting NodeId: \w+`))
 		})
 	})
 
 	Describe("DeleteNode", func() {
-		It("should delete node", func() {
+		It("should delete a node", func() {
 			folder := createFolder()
 
-			_, err := client.DeleteNode(folder.Id)
+			_, err := client.DeleteNode(context.Background(), folder.Id)
 			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should not delete a non-existent node", func() {
+			_, err := client.DeleteNode(context.Background(), "nonexistentid")
+			Expect(err).To(HaveOccurred())
+			cde, ok := IsCloudDriveError(err)
+			Expect(ok).To(BeTrue())
+			Expect(cde.Code).To(Equal(ErrorCodeNodeNotFound))
+			Expect(cde.Message).To(Equal("Node does not exists"))
 		})
 	})
 
 	Describe("RenameNode", func() {
-		It("should rename node", func() {
+		It("should rename a node", func() {
 			folder := createFolder()
 			newName := fmt.Sprintf("%d", rand.Int())
 
-			node, err := client.RenameNode(folder.Id, newName)
+			node, err := client.RenameNode(context.Background(), folder.Id, newName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(node.Name).To(Equal(newName))
+		})
+
+		It("should not rename a non-existent node", func() {
+			newName := fmt.Sprintf("%d", rand.Int())
+
+			_, err := client.RenameNode(context.Background(), "nonexistentid", newName)
+			Expect(err).To(HaveOccurred())
+			cde, ok := IsCloudDriveError(err)
+			Expect(ok).To(BeTrue())
+			Expect(cde.Code).To(Equal(ErrorCodeNodeNotFound))
+			Expect(cde.Message).To(Equal("Node does not exists"))
+		})
+
+		It("should not rename a node if the name already exists", func() {
+			folder := createFolder()
+			existingFolder := createFolder()
+
+			_, err := client.RenameNode(context.Background(), folder.Id, existingFolder.Name)
+			cde, ok := IsCloudDriveError(err)
+			Expect(ok).To(BeTrue())
+			Expect(cde.Code).To(Equal(ErrorCodeNameAlreadyExists))
+			Expect(cde.Message).To(MatchRegexp(`^Node with the name \w+ already exists under parentId \w+ conflicting NodeId: \w+`))
 		})
 	})
 
 	Describe("MoveNode", func() {
-		It("should move node", func() {
+		It("should move a node", func() {
 			folder := createFolder()
 			dest := createFolder()
 
-			node, err := client.MoveNode(folder.Id, root.Id, dest.Id)
+			node, err := client.MoveNode(context.Background(), folder.Id, root.Id, dest.Id)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(node.Name).To(Equal(folder.Name))
+		})
+
+		It("should not move a non-existent node", func() {
+			dest := createFolder()
+
+			_, err := client.MoveNode(context.Background(), "nonexistentid", root.Id, dest.Id)
+			Expect(err).To(HaveOccurred())
+			cde, ok := IsCloudDriveError(err)
+			Expect(ok).To(BeTrue())
+			Expect(cde.Code).To(Equal(ErrorCodeNodeNotFound))
+			Expect(cde.Message).To(Equal("Node does not exists"))
+		})
+
+		It("should not move a node to a non-existent destination", func() {
+			folder := createFolder()
+
+			_, err := client.MoveNode(context.Background(), folder.Id, root.Id, "nonexistentid")
+			Expect(err).To(HaveOccurred())
+			cde, ok := IsCloudDriveError(err)
+			Expect(ok).To(BeTrue())
+			Expect(cde.Code).To(Equal(ErrorCodeNodeNotFound))
+			Expect(cde.Message).To(Equal("Node does not exists"))
+		})
+
+		It("should not move a node from a non-existent parent", func() {
+			folder := createFolder()
+			dest := createFolder()
+
+			_, err := client.MoveNode(context.Background(), folder.Id, "nonexistentid", dest.Id)
+			Expect(err).To(HaveOccurred())
+			cde, ok := IsCloudDriveError(err)
+			Expect(ok).To(BeTrue())
+			Expect(cde.Code).To(Equal(ErrorCodeNodeNotFound))
+			Expect(cde.Message).To(Equal("Node does not exists"))
 		})
 	})
 
 	Describe("DownloadNode", func() {
-		It("should download node", func() {
+		It("should download a node", func() {
 			name := fmt.Sprintf("%d", rand.Int())
 
-			node, err := client.UploadNode(root.Id, name, strings.NewReader("12345"))
+			node, err := client.UploadNode(context.Background(), root.Id, name, strings.NewReader("12345"))
 			Expect(err).NotTo(HaveOccurred())
 
-			reader, size, err := client.DownloadNode(node.Id, nil)
+			reader, size, err := client.DownloadNode(context.Background(), node.Id, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(reader).NotTo(BeNil())
 			Expect(size).To(Equal(int64(5)))
@@ -180,13 +290,13 @@ var _ = Describe("CloudDrive", func() {
 			Expect(string(data)).To(Equal("12345"))
 		})
 
-		It("should download node range", func() {
+		It("should download a node range", func() {
 			name := fmt.Sprintf("%d", rand.Int())
 
-			node, err := client.UploadNode(root.Id, name, strings.NewReader("12345"))
+			node, err := client.UploadNode(context.Background(), root.Id, name, strings.NewReader("12345"))
 			Expect(err).NotTo(HaveOccurred())
 
-			reader, size, err := client.DownloadNode(node.Id, &ioutils.FileSpan{2, 3})
+			reader, size, err := client.DownloadNode(context.Background(), node.Id, &ioutils.FileSpan{2, 3})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(reader).NotTo(BeNil())
 			Expect(size).To(Equal(int64(2)))
@@ -197,13 +307,13 @@ var _ = Describe("CloudDrive", func() {
 			Expect(string(data)).To(Equal("34"))
 		})
 
-		It("should download node by temp link", func() {
+		It("should download a node by temp link", func() {
 			name := fmt.Sprintf("%d", rand.Int())
 
-			node, err := client.UploadNode(root.Id, name, strings.NewReader("12345"))
+			node, err := client.UploadNode(context.Background(), root.Id, name, strings.NewReader("12345"))
 			Expect(err).NotTo(HaveOccurred())
 
-			reader, size, err := client.DownloadNodeByTempLink(node.Id, nil)
+			reader, size, err := client.DownloadNodeByTempLink(context.Background(), node.Id, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(reader).NotTo(BeNil())
 			Expect(size).To(Equal(int64(5)))
@@ -214,13 +324,13 @@ var _ = Describe("CloudDrive", func() {
 			Expect(string(data)).To(Equal("12345"))
 		})
 
-		It("should download node range by temp link", func() {
+		It("should download a node range by temp link", func() {
 			name := fmt.Sprintf("%d", rand.Int())
 
-			node, err := client.UploadNode(root.Id, name, strings.NewReader("12345"))
+			node, err := client.UploadNode(context.Background(), root.Id, name, strings.NewReader("12345"))
 			Expect(err).NotTo(HaveOccurred())
 
-			reader, size, err := client.DownloadNodeByTempLink(node.Id, &ioutils.FileSpan{2, 3})
+			reader, size, err := client.DownloadNodeByTempLink(context.Background(), node.Id, &ioutils.FileSpan{2, 3})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(reader).NotTo(BeNil())
 			Expect(size).To(Equal(int64(2)))
@@ -229,41 +339,70 @@ var _ = Describe("CloudDrive", func() {
 			reader.Close()
 
 			Expect(string(data)).To(Equal("34"))
+		})
+
+		It("should not download a non-existent node", func() {
+			_, _, err := client.DownloadNode(context.Background(), "nonexistentid", nil)
+			Expect(err).To(HaveOccurred())
+			cde, ok := IsCloudDriveError(err)
+			Expect(ok).To(BeTrue())
+			Expect(cde.Code).To(Equal(ErrorCodeNodeNotFound))
+			Expect(cde.Message).To(Equal("Node does not exists"))
 		})
 	})
 
 	Describe("UploadNode", func() {
-		It("should upload node", func() {
+		It("should upload a node", func() {
 			name := fmt.Sprintf("%d", rand.Int())
 
-			node, err := client.UploadNode(root.Id, name, strings.NewReader("12345"))
+			node, err := client.UploadNode(context.Background(), root.Id, name, strings.NewReader("12345"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(node.Name).To(Equal(name))
 			Expect(node.ContentProperties.Size).To(Equal(int64(5)))
 		})
+
+		It("should not upload a node to a non-existent parent", func() {
+			name := fmt.Sprintf("%d", rand.Int())
+
+			_, err := client.UploadNode(context.Background(), "nonexistentid", name, strings.NewReader("12345"))
+			Expect(err).To(HaveOccurred())
+			cde, ok := IsCloudDriveError(err)
+			Expect(ok).To(BeTrue())
+			Expect(cde.Code).To(Equal(ErrorCodeParentNodeIDNotFound))
+			Expect(cde.Message).To(Equal("One of the parentId doesn't exists"))
+		})
 	})
 
 	Describe("OverwriteNode", func() {
-		It("should overwrite node", func() {
+		It("should overwrite a node", func() {
 			name := fmt.Sprintf("%d", rand.Int())
 
-			node, err := client.UploadNode(root.Id, name, strings.NewReader("12345"))
+			node, err := client.UploadNode(context.Background(), root.Id, name, strings.NewReader("12345"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(node.Name).To(Equal(name))
 			Expect(node.ContentProperties.Size).To(Equal(int64(5)))
 
 			time.Sleep(2 * time.Second)
 
-			node, err = client.OverwriteNode(node.Id, strings.NewReader("abc"))
+			node, err = client.OverwriteNode(context.Background(), node.Id, strings.NewReader("abc"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(node.Name).To(Equal(name))
 			Expect(node.ContentProperties.Size).To(Equal(int64(3)))
+		})
+
+		It("should not overwrite a non-existent node", func() {
+			_, err := client.OverwriteNode(context.Background(), "nonexistentid", strings.NewReader("abc"))
+			Expect(err).To(HaveOccurred())
+			cde, ok := IsCloudDriveError(err)
+			Expect(ok).To(BeTrue())
+			Expect(cde.Code).To(Equal(ErrorCodeNodeNotFound))
+			Expect(cde.Message).To(Equal("Node does not exists"))
 		})
 	})
 
 	Describe("Quota", func() {
 		It("should get account quota", func() {
-			quota, err := client.Quota()
+			quota, err := client.Quota(context.Background())
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(quota.Quota).To(BeNumerically(">", 0))
@@ -271,4 +410,60 @@ var _ = Describe("CloudDrive", func() {
 		})
 	})
 
+	Describe("Errors", func() {
+		It("should handle Too many requests error", func() {
+			client.MaxRetries = 2
+			folder := createFolder()
+
+			retries := 0
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				retries++
+
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusTooManyRequests)
+				w.Write([]byte(`{"logref":"LOGREF-UUID","message":"Rate exceeded","code":""}`))
+			}))
+			defer server.Close()
+			baseURL, _ := url.Parse(server.URL)
+			client.MetadataClient.BaseURL = baseURL
+
+			_, err := client.NodeChildren(context.Background(), folder.Id)
+			Expect(err).To(HaveOccurred())
+			cde, ok := IsCloudDriveError(err)
+			Expect(ok).To(BeTrue())
+			Expect(cde.Code).To(Equal(ErrorCodeTooManyRequests))
+			Expect(cde.Message).To(Equal("Rate exceeded"))
+			Expect(retries).To(Equal(2))
+		})
+
+		It("should retry on Too many requests error", func() {
+			client.MaxRetries = 3
+			folder := createFolder()
+
+			retries := 0
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				retries++
+
+				if retries == 3 {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte(`{"data":[],"count":0}`))
+				} else {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusTooManyRequests)
+					w.Write([]byte(`{"logref":"LOGREF-UUID","message":"Rate exceeded","code":""}`))
+				}
+			}))
+			defer server.Close()
+			baseURL, _ := url.Parse(server.URL)
+			client.MetadataClient.BaseURL = baseURL
+
+			children, err := client.NodeChildren(context.Background(), folder.Id)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(children).To(BeEmpty())
+			Expect(retries).To(Equal(3))
+		})
+	})
 })

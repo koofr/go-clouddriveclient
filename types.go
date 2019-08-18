@@ -11,20 +11,6 @@ type Endpoint struct {
 	MetadataUrl    string `json:"metadataUrl"`
 }
 
-const (
-	NodeKindAsset  = "ASSET"
-	NodeKindFile   = "FILE"
-	NodeKindFolder = "FOLDER"
-	NodeKindGroup  = "GROUP"
-)
-
-const (
-	NodeStatusAvailable = "AVAILABLE"
-	NodeStatusPending   = "PENDING"
-	NodeStatusTrash     = "TRASH"
-	NodeStatusPurged    = "PURGED"
-)
-
 type Node struct {
 	Id                string                `json:"id"`
 	Name              string                `json:"name"`

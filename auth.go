@@ -1,6 +1,7 @@
 package clouddriveclient
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -31,15 +32,15 @@ type CloudDriveAuth struct {
 	AccessToken    string
 	RefreshToken   string
 	ExpiresAt      time.Time
-	OnTokenRefresh func()
+	OnTokenRefresh func(ctx context.Context)
 	HTTPClient     *httpclient.HTTPClient
 
 	mutex sync.Mutex
 }
 
-func (a *CloudDriveAuth) ValidToken() (token string, err error) {
+func (a *CloudDriveAuth) ValidToken(ctx context.Context) (token string, err error) {
 	if time.Now().Unix() > (a.ExpiresAt.Unix() - 5*60) {
-		err = a.UpdateRefreshToken()
+		err = a.UpdateRefreshToken(ctx)
 		if err != nil {
 			return "", err
 		}
@@ -50,7 +51,7 @@ func (a *CloudDriveAuth) ValidToken() (token string, err error) {
 	return token, nil
 }
 
-func (a *CloudDriveAuth) UpdateRefreshToken() (err error) {
+func (a *CloudDriveAuth) UpdateRefreshToken(ctx context.Context) (err error) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 
@@ -64,6 +65,7 @@ func (a *CloudDriveAuth) UpdateRefreshToken() (err error) {
 	var respVal RefreshResp
 
 	_, err = a.HTTPClient.Request(&httpclient.RequestData{
+		Context:        ctx,
 		Method:         "POST",
 		FullURL:        "https://api.amazon.com/auth/o2/token",
 		ExpectedStatus: []int{http.StatusOK},
@@ -91,7 +93,7 @@ func (a *CloudDriveAuth) UpdateRefreshToken() (err error) {
 	a.ExpiresAt = time.Now().Add(time.Duration(respVal.ExpiresIn) * time.Second)
 
 	if a.OnTokenRefresh != nil {
-		a.OnTokenRefresh()
+		a.OnTokenRefresh(ctx)
 	}
 
 	return nil

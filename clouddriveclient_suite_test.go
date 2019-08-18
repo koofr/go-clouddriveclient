@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestGoOnedriveclient(t *testing.T) {
+func TestGoCloudDriveClient(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "GoOnedriveclient Suite")
+	RunSpecs(t, "GoCloudDriveClient Suite")
 }
